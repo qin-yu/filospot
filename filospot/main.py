@@ -199,13 +199,8 @@ def load_indexed_pair():
                 scale=(0.3000000, 0.0405217, 0.0405217),
                 colormap="green",
                 blending="additive",
-                translate=navigator.ref_offset,  # Apply any existing offset
             )
             print("Reference image loaded successfully")
-            if any(offset != 0 for offset in navigator.ref_offset):
-                print(
-                    f"Applied stored offsets: Z={navigator.ref_offset[0]}, Y={navigator.ref_offset[1]}, X={navigator.ref_offset[2]}"
-                )
         else:
             print(f"Reference image file does not exist: {path_ref}")
     else:
