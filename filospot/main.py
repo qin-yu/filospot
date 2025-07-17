@@ -169,53 +169,11 @@ navigator = DataNavigator()
 viewer = napari.Viewer()
 
 
-# TODO: Current fix is applied to each function that creates new layers. Future changes could be made at lower level.
-def protect_combobox_during_layer_operations(func):
-    """Decorator to protect combobox state during layer add/remove operations"""
-
-    def wrapper(*args, **kwargs):
-        # Save current combobox state before the operation
-        saved_choices = []
-        saved_value = ""
-
-        try:
-            if hasattr(navigation_widget.image_combo, "choices"):
-                saved_choices = list(
-                    getattr(navigation_widget.image_combo, "choices", [])
-                )
-            if hasattr(navigation_widget.image_combo, "value"):
-                saved_value = getattr(navigation_widget.image_combo, "value", "")
-        except Exception:
-            pass
-
-        # Execute the function that might affect layers
-        result = func(*args, **kwargs)
-
-        # Restore combobox state after the operation
-        try:
-            if saved_choices and navigator.tif_paths:
-                current_choices = getattr(navigation_widget.image_combo, "choices", [])
-                if not current_choices or len(current_choices) != len(saved_choices):
-                    navigation_widget.image_combo.choices = saved_choices
-                    if saved_value and saved_value in saved_choices:
-                        navigation_widget.image_combo.value = saved_value
-                    print(
-                        f"Protected and restored combobox: {len(saved_choices)} choices, value: {saved_value}"
-                    )
-        except Exception as e:
-            print(f"Error restoring combobox state: {e}")
-
-        return result
-
-    return wrapper
-
-
 def clear_layers():
     for layer in list(viewer.layers):
         viewer.layers.remove(layer)
 
 
-@protect_combobox_during_layer_operations
 def load_indexed_pair():
     path_tif, path_ref, path_csv = navigator.get_current()
     print(f"Loading image: {path_tif}")
@@ -270,6 +228,37 @@ def load_indexed_pair():
         update_reference_contrast()
 
 
+def setup_combobox_protection():
+    """Set up global protection for the combobox against napari layer events"""
+
+    def on_layer_change(*args, **kwargs):
+        """Event handler to protect combobox when layers change"""
+        if navigator.tif_paths and hasattr(navigation_widget, "image_combo"):
+            # Check if combobox was cleared and restore it
+            current_choices = getattr(navigation_widget.image_combo, "choices", [])
+            if not current_choices:
+                choices = [path.stem for path in navigator.tif_paths]
+                navigation_widget.image_combo.choices = choices
+
+                # Restore current selection
+                if 0 <= navigator.index < len(navigator.tif_paths):
+                    current_image = navigator.tif_paths[navigator.index].stem
+                    navigation_widget.image_combo.value = current_image
+                    print(
+                        f"Auto-restored combobox after layer change: {len(choices)} choices, current: {current_image}"
+                    )
+
+    # Connect to napari layer events
+    try:
+        # Connect to various layer list events that might clear the combobox
+        viewer.layers.events.inserted.connect(on_layer_change)
+        viewer.layers.events.removed.connect(on_layer_change)
+        viewer.layers.events.reordered.connect(on_layer_change)
+        print("Combobox protection events connected successfully")
+    except Exception as e:
+        print(f"Warning: Could not connect all combobox protection events: {e}")
+
+
 @magicgui(
     call_button="Load Directories",
     dir_tif={"label": "Raw spots", "mode": "d"},
@@ -290,6 +279,7 @@ def load_directories(
         if navigator.ref_paths:
             print(f"Loaded {len(navigator.ref_paths)} reference images.")
         print(f"Current image: {navigator.index + 1}/{len(navigator.tif_paths)}")
+        setup_combobox_protection()
     except Exception as e:
         print(f"Error: {e}")
 
@@ -451,7 +441,6 @@ def update_image_selection():
 
 
 # Alignment functions (without decorators - will be used in combined widget)
-@protect_combobox_during_layer_operations
 def align_reference_func(offset_z: int, offset_y: int, offset_x: int):
     """Apply Z, Y, X pixel offsets to align the reference image with the main image"""
     if not navigator.ref_paths:
@@ -500,7 +489,6 @@ def align_reference_func(offset_z: int, offset_y: int, offset_x: int):
         print("Reference image not found")
 
 
-@protect_combobox_during_layer_operations
 def reset_alignment_func():
     """Reset reference image alignment to zero offsets and remove aligned layer"""
     # Remove any existing aligned layer
@@ -678,7 +666,6 @@ def update_reference_contrast():
 
 
 # Filter functions (without decorators - will be used in combined widget)
-@protect_combobox_during_layer_operations
 def filter_spots_by_reference_func(
     intensity_threshold: int,
     gaussian_sigma: float,
