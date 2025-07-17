@@ -169,11 +169,53 @@ navigator = DataNavigator()
 viewer = napari.Viewer()
 
 
+# TODO: Current fix is applied to each function that creates new layers. Future changes could be made at lower level.
+def protect_combobox_during_layer_operations(func):
+    """Decorator to protect combobox state during layer add/remove operations"""
+
+    def wrapper(*args, **kwargs):
+        # Save current combobox state before the operation
+        saved_choices = []
+        saved_value = ""
+
+        try:
+            if hasattr(navigation_widget.image_combo, "choices"):
+                saved_choices = list(
+                    getattr(navigation_widget.image_combo, "choices", [])
+                )
+            if hasattr(navigation_widget.image_combo, "value"):
+                saved_value = getattr(navigation_widget.image_combo, "value", "")
+        except Exception:
+            pass
+
+        # Execute the function that might affect layers
+        result = func(*args, **kwargs)
+
+        # Restore combobox state after the operation
+        try:
+            if saved_choices and navigator.tif_paths:
+                current_choices = getattr(navigation_widget.image_combo, "choices", [])
+                if not current_choices or len(current_choices) != len(saved_choices):
+                    navigation_widget.image_combo.choices = saved_choices
+                    if saved_value and saved_value in saved_choices:
+                        navigation_widget.image_combo.value = saved_value
+                    print(
+                        f"Protected and restored combobox: {len(saved_choices)} choices, value: {saved_value}"
+                    )
+        except Exception as e:
+            print(f"Error restoring combobox state: {e}")
+
+        return result
+
+    return wrapper
+
+
 def clear_layers():
     for layer in list(viewer.layers):
         viewer.layers.remove(layer)
 
 
+@protect_combobox_during_layer_operations
 def load_indexed_pair():
     path_tif, path_ref, path_csv = navigator.get_current()
     print(f"Loading image: {path_tif}")
@@ -243,7 +285,7 @@ def load_directories(
         navigator.load_paths(dir_tif, dir_ref, dir_csv)
         clear_layers()
         load_indexed_pair()
-        update_image_choices()  # Update the dropdown choices after loading
+        update_image_choices()  # Update the dropdown choices only after successful loading
         print(f"Loaded {len(navigator.tif_paths)} images.")
         if navigator.ref_paths:
             print(f"Loaded {len(navigator.ref_paths)} reference images.")
@@ -258,7 +300,7 @@ def load_next():
         navigator.next()
         clear_layers()
         load_indexed_pair()
-        update_image_choices()  # Update dropdown selection
+        update_image_selection()  # Update dropdown selection only after successful navigation
         print(f"Image {navigator.index + 1}/{len(navigator.tif_paths)}")
     else:
         print("Already at last image.")
@@ -269,7 +311,7 @@ def load_previous():
         navigator.prev()
         clear_layers()
         load_indexed_pair()
-        update_image_choices()  # Update dropdown selection
+        update_image_selection()  # Update dropdown selection only after successful navigation
         print(f"Image {navigator.index + 1}/{len(navigator.tif_paths)}")
     else:
         print("Already at first image.")
@@ -294,7 +336,7 @@ def go_to_image_func(image_selection: str):
         navigator.index = selected_index
         clear_layers()
         load_indexed_pair()
-        update_image_choices()  # Update dropdown selection to sync with current image
+        update_image_selection()  # Update dropdown selection only after successful navigation
         print(
             f"Jumped to image {selected_index + 1}/{len(navigator.tif_paths)}: {image_selection}"
         )
@@ -345,12 +387,12 @@ navigation_widget = create_navigation_widget()
 
 
 def update_image_choices():
-    """Update the choices in the image selection dropdown"""
+    """Update the choices in the image selection dropdown - only called when directories are loaded"""
     if navigator.tif_paths:
         choices = [path.stem for path in navigator.tif_paths]
         navigation_widget.image_combo.choices = choices
 
-        # Always set current selection to the currently loaded image
+        # Set current selection to the currently loaded image
         if 0 <= navigator.index < len(choices):
             current_image = choices[navigator.index]
             navigation_widget.image_combo.value = current_image
@@ -370,7 +412,46 @@ def update_image_choices():
         print("Cleared dropdown choices - no images loaded")
 
 
+def preserve_combobox_state():
+    """Ensure the combobox maintains its choices and selection"""
+    if navigator.tif_paths:
+        # Check if choices are missing and restore them
+        current_choices = getattr(navigation_widget.image_combo, "choices", [])
+        if not current_choices:
+            choices = [path.stem for path in navigator.tif_paths]
+            navigation_widget.image_combo.choices = choices
+            print(f"Restored combobox choices: {len(choices)} items")
+
+        # Ensure current selection is correct
+        if 0 <= navigator.index < len(navigator.tif_paths):
+            expected_selection = navigator.tif_paths[navigator.index].stem
+            current_selection = getattr(navigation_widget.image_combo, "value", "")
+            if current_selection != expected_selection:
+                navigation_widget.image_combo.value = expected_selection
+                print(f"Restored combobox selection to: {expected_selection}")
+
+
+def update_image_selection():
+    """Update only the selection in the dropdown - called after successful navigation"""
+    if navigator.tif_paths:
+        # Ensure choices are populated if they're empty (defensive programming)
+        current_choices = getattr(navigation_widget.image_combo, "choices", [])
+        if not current_choices:
+            print("Warning: Combobox choices are empty, repopulating...")
+            choices = [path.stem for path in navigator.tif_paths]
+            navigation_widget.image_combo.choices = choices
+            print(f"Repopulated dropdown with {len(choices)} choices")
+
+        if 0 <= navigator.index < len(navigator.tif_paths):
+            current_image = navigator.tif_paths[navigator.index].stem
+            navigation_widget.image_combo.value = current_image
+            print(f"Updated dropdown selection to: {current_image}")
+        else:
+            print(f"Warning: Navigation index {navigator.index} is out of bounds")
+
+
 # Alignment functions (without decorators - will be used in combined widget)
+@protect_combobox_during_layer_operations
 def align_reference_func(offset_z: int, offset_y: int, offset_x: int):
     """Apply Z, Y, X pixel offsets to align the reference image with the main image"""
     if not navigator.ref_paths:
@@ -419,6 +500,7 @@ def align_reference_func(offset_z: int, offset_y: int, offset_x: int):
         print("Reference image not found")
 
 
+@protect_combobox_during_layer_operations
 def reset_alignment_func():
     """Reset reference image alignment to zero offsets and remove aligned layer"""
     # Remove any existing aligned layer
@@ -596,6 +678,7 @@ def update_reference_contrast():
 
 
 # Filter functions (without decorators - will be used in combined widget)
+@protect_combobox_during_layer_operations
 def filter_spots_by_reference_func(
     intensity_threshold: int,
     gaussian_sigma: float,
