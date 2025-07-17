@@ -1,0 +1,12 @@
+name: filospot
+display_name: Filospot
+contributions:
+  commands:
+    - id: filospot.main_widget
+      title: Filospot - Image and Spot Analysis
+      python_name: filospot._widget:make_filospot_widget
+      short_title: Filospot
+      category: Filospot
+  widgets:
+    - command: filospot.main_widget
+      display_name: Filospot

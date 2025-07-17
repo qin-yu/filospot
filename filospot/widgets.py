@@ -198,8 +198,7 @@ def create_filter_widget(viewer: napari.Viewer):
         widgets=[
             params_container,
             blur_check_container,
-            Container(widgets=[aligned_check]),
-            Container(widgets=[contrast_check]),
+            Container(widgets=[aligned_check, contrast_check], layout="horizontal"),
             filter_btn_container,
         ],
         layout="vertical",
@@ -395,7 +394,7 @@ def create_export_widget(default_root: Path):
 
     @magicgui(
         call_button="Export to CSV",
-        output_dir={"label": "Output Directory", "mode": "d"},
+        output_dir={"label": "Output", "mode": "d"},
     )
     def export_csv(layer: Points, output_dir: Path = default_root):
         output_dir.mkdir(parents=True, exist_ok=True)
