@@ -169,6 +169,35 @@ navigator = DataNavigator()
 viewer = napari.Viewer()
 
 
+def find_reference_layer(prefer_aligned=False):
+    """Find the reference layer to use, optionally preferring aligned version"""
+    ref_layer = None
+
+    if prefer_aligned:
+        # Look for aligned reference layer first
+        for layer in viewer.layers:
+            if "_ref_aligned" in layer.name:
+                ref_layer = layer
+                break
+
+    if not ref_layer:
+        # Look for original reference layer
+        for layer in viewer.layers:
+            if "_ref" in layer.name and "_aligned" not in layer.name:
+                ref_layer = layer
+                break
+
+    return ref_layer
+
+
+def remove_layer_by_pattern(pattern):
+    """Remove layer(s) matching the given pattern"""
+    layers_to_remove = [layer for layer in viewer.layers if pattern in layer.name]
+    for layer in layers_to_remove:
+        viewer.layers.remove(layer)
+    return len(layers_to_remove) > 0
+
+
 def clear_layers():
     for layer in list(viewer.layers):
         viewer.layers.remove(layer)
@@ -445,15 +474,8 @@ def align_reference_func(offset_z: int, offset_y: int, offset_x: int):
     # Update the stored offsets
     navigator.ref_offset = [offset_z, offset_y, offset_x]
 
-    # Check if there's already an aligned reference layer and remove it
-    aligned_layer = None
-    for layer in viewer.layers:
-        if "_ref_aligned" in layer.name:
-            aligned_layer = layer
-            break
-
-    if aligned_layer:
-        viewer.layers.remove(aligned_layer)
+    # Remove any existing aligned reference layer
+    remove_layer_by_pattern("_ref_aligned")
 
     # Create new aligned reference layer (keeping original reference layer)
     path_tif, path_ref, path_csv = navigator.get_current()
@@ -487,23 +509,11 @@ def align_reference_func(offset_z: int, offset_y: int, offset_x: int):
 def reset_alignment_func():
     """Reset reference image alignment to zero offsets and remove aligned layer"""
     # Remove any existing aligned layer
-    aligned_layer = None
-    for layer in viewer.layers:
-        if "_ref_aligned" in layer.name:
-            aligned_layer = layer
-            break
+    remove_layer_by_pattern("_ref_aligned")
+    print("Removed aligned reference layer")
 
-    if aligned_layer:
-        viewer.layers.remove(aligned_layer)
-        print("Removed aligned reference layer")
-
-    # Reset the spinbox values in the alignment widget
-    alignment_widget.offset_z_spin.value = 0
-    alignment_widget.offset_y_spin.value = 0
-    alignment_widget.offset_x_spin.value = 0
-
-    # Reset stored offsets
-    navigator.ref_offset = [0, 0, 0]
+    # Reset alignment using the utility function
+    reset_reference_alignment()
     print("Reset alignment offsets to zero")
 
 
@@ -556,20 +566,10 @@ alignment_widget = create_alignment_widget()
 def update_threshold_range():
     """Update the threshold spinbox range based on current reference image"""
     # Find the reference image to use
-    ref_layer = None
-    if hasattr(filter_widget, "aligned_check") and filter_widget.aligned_check.value:
-        # Look for aligned reference layer
-        for layer in viewer.layers:
-            if "_ref_aligned" in layer.name:
-                ref_layer = layer
-                break
-
-    if not ref_layer:
-        # Look for original reference layer
-        for layer in viewer.layers:
-            if "_ref" in layer.name and "_aligned" not in layer.name:
-                ref_layer = layer
-                break
+    ref_layer = find_reference_layer(
+        prefer_aligned=hasattr(filter_widget, "aligned_check")
+        and filter_widget.aligned_check.value
+    )
 
     if ref_layer:
         ref_image = ref_layer.data
@@ -622,18 +622,10 @@ def update_reference_contrast():
     threshold = filter_widget.threshold_spin.value
 
     # Find the reference layer being used
-    ref_layer = None
-    if hasattr(filter_widget, "aligned_check") and filter_widget.aligned_check.value:
-        for layer in viewer.layers:
-            if "_ref_aligned" in layer.name:
-                ref_layer = layer
-                break
-
-    if not ref_layer:
-        for layer in viewer.layers:
-            if "_ref" in layer.name and "_aligned" not in layer.name:
-                ref_layer = layer
-                break
+    ref_layer = find_reference_layer(
+        prefer_aligned=hasattr(filter_widget, "aligned_check")
+        and filter_widget.aligned_check.value
+    )
 
     if ref_layer and isinstance(ref_layer, Image):
         # Set contrast limits to highlight the threshold
@@ -641,7 +633,6 @@ def update_reference_contrast():
             # Get the actual numpy array from the layer
             ref_image = np.asarray(ref_layer.data)
             min_val = float(np.min(ref_image))
-            max_val = float(np.max(ref_image))
             threshold_val = float(threshold)
 
             # Set contrast limits to emphasize the threshold
@@ -685,22 +676,7 @@ def filter_spots_by_reference_func(
         return
 
     # Find the reference image to use
-    ref_layer = None
-    if use_aligned:
-        # Look for aligned reference layer
-        for layer in viewer.layers:
-            if "_ref_aligned" in layer.name:
-                ref_layer = layer
-                break
-        if not ref_layer:
-            print("No aligned reference layer found. Using original reference.")
-
-    if not ref_layer:
-        # Look for original reference layer
-        for layer in viewer.layers:
-            if "_ref" in layer.name and "_aligned" not in layer.name:
-                ref_layer = layer
-                break
+    ref_layer = find_reference_layer(prefer_aligned=use_aligned)
 
     if not ref_layer:
         print("No reference image layer found")
@@ -714,10 +690,7 @@ def filter_spots_by_reference_func(
     # Apply Gaussian blur if requested
     if use_blur and gaussian_sigma > 0:
         print(f"Applying Gaussian blur with sigma={gaussian_sigma}")
-        if ref_image.ndim == 3:
-            ref_image = ndimage.gaussian_filter(ref_image, sigma=gaussian_sigma)
-        else:
-            ref_image = ndimage.gaussian_filter(ref_image, sigma=gaussian_sigma)
+        ref_image = ndimage.gaussian_filter(ref_image, sigma=gaussian_sigma)
 
     # Get points data
     points_data = points_layer.data.copy()
@@ -768,10 +741,7 @@ def filter_spots_by_reference_func(
     if points_to_remove:
         removed_layer_name = f"{points_layer.name}_removed_thresh{intensity_threshold}"
         # Remove existing removed layer with same name
-        for layer in list(viewer.layers):
-            if layer.name == removed_layer_name:
-                viewer.layers.remove(layer)
-                break
+        remove_layer_by_pattern(removed_layer_name)
 
         viewer.add_points(
             np.array(points_to_remove),
