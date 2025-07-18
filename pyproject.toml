@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filospot"
+version = "0.1.0"
+authors = [{ name = "Qin Yu", email = "qin.yu@embl.de" }]
+description = "For automating the loading, navigation, alignment, filter and export of image and spot data"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "napari[all]",
+    "numpy",
+    "pandas",
+    "tifffile",
+    "magicgui",
+    "scipy",
+]
+
+[project.urls]
+Homepage = "https://github.com/qin-yu/filospot"
+Repository = "https://github.com/qin-yu/filospot"
+Issues = "https://github.com/qin-yu/filospot/issues"
+
+[project.scripts]
+filospot = "filospot:main"
+
+[project.entry-points."napari.manifest"]
+filospot = "filospot:napari.yaml"
+
+[project.optional-dependencies]
+testing = [
+    "tox",
+    "pytest",     # https://docs.pytest.org/en/latest/contents.html
+    "pytest-cov", # https://pytest-cov.readthedocs.io/en/latest/
+    "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
+    "napari",
+    "pyqt5",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["filospot*"]
+exclude = ["tests*"]

@@ -1,0 +1,65 @@
+{% set name = "filospot" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/filospot-{{ version }}.tar.gz
+  # For development, you can use git source:
+  # git_url: https://github.com/qin-yu/filospot.git
+  # git_rev: v{{ version }}
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv
+  number: 0
+  entry_points:
+    - filospot = filospot:main
+
+requirements:
+  host:
+    - python >=3.8
+    - pip
+    - setuptools
+    - wheel
+  run:
+    - python >=3.8
+    - napari
+    - numpy
+    - pandas
+    - tifffile
+    - magicgui
+    - scipy
+
+test:
+  imports:
+    - filospot
+    - filospot._widget
+    - filospot.app
+  # Note: Command line test requires GUI backend, skipped for headless conda build
+
+about:
+  home: https://github.com/qin-yu/filospot
+  summary: A napari plugin for automating the loading, navigation, alignment, filter and export of image and spot data
+  description: |
+    Filospot is a napari plugin that provides tools for automating the loading, navigation, alignment,
+    filter and export of image and spot data. It includes features for data
+    navigation, reference alignment, spot filtering, and export functionality.
+
+    Features:
+    - Load and navigate image datasets with corresponding CSV spot detection files
+    - Align reference images with main images using pixel-level translation
+    - Filter detected spots based on intensity thresholds in reference images
+    - Export filtered spots to CSV format
+
+    This package can be used as a standalone application or as a napari plugin.
+  license: MIT
+  license_file: LICENSE
+  doc_url: https://github.com/qin-yu/filospot
+  dev_url: https://github.com/qin-yu/filospot
+
+extra:
+  recipe-maintainers:
+    - qin-yu
